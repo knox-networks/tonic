@@ -26,21 +26,15 @@ impl TlsConnector {
         identity: Option<Identity>,
         domain: &str,
         assume_http2: bool,
-        #[cfg(feature = "tls-native-roots")] with_native_roots: bool,
-        #[cfg(feature = "tls-webpki-roots")] with_webpki_roots: bool,
     ) -> Result<Self, crate::Error> {
         let builder = ClientConfig::builder();
         let mut roots = RootCertStore::empty();
 
-        #[cfg(feature = "tls-native-roots")]
-        if with_native_roots {
-            roots.add_parsable_certificates(rustls_native_certs::load_native_certs()?);
-        }
+        #[cfg(feature = "tls-roots")]
+        roots.add_parsable_certificates(rustls_native_certs::load_native_certs()?);
 
         #[cfg(feature = "tls-webpki-roots")]
-        if with_webpki_roots {
-            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        }
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
         for cert in ca_certs {
             add_certs_from_pem(&mut Cursor::new(cert), &mut roots)?;

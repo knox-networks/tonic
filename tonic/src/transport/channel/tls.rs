@@ -12,10 +12,6 @@ pub struct ClientTlsConfig {
     certs: Vec<Certificate>,
     identity: Option<Identity>,
     assume_http2: bool,
-    #[cfg(feature = "tls-native-roots")]
-    with_native_roots: bool,
-    #[cfg(feature = "tls-webpki-roots")]
-    with_webpki_roots: bool,
 }
 
 impl ClientTlsConfig {
@@ -63,38 +59,16 @@ impl ClientTlsConfig {
         }
     }
 
-    /// Enables the platform's trusted certs.
-    #[cfg(feature = "tls-native-roots")]
-    pub fn with_native_roots(self) -> Self {
-        ClientTlsConfig {
-            with_native_roots: true,
-            ..self
-        }
-    }
-
-    /// Enables the webpki roots.
-    #[cfg(feature = "tls-webpki-roots")]
-    pub fn with_webpki_roots(self) -> Self {
-        ClientTlsConfig {
-            with_webpki_roots: true,
-            ..self
-        }
-    }
-
-    pub(crate) fn into_tls_connector(self, uri: &Uri) -> Result<TlsConnector, crate::Error> {
+    pub(crate) fn tls_connector(&self, uri: Uri) -> Result<TlsConnector, crate::Error> {
         let domain = match &self.domain {
             Some(domain) => domain,
             None => uri.host().ok_or_else(Error::new_invalid_uri)?,
         };
         TlsConnector::new(
-            self.certs,
-            self.identity,
+            self.certs.clone(),
+            self.identity.clone(),
             domain,
             self.assume_http2,
-            #[cfg(feature = "tls-native-roots")]
-            self.with_native_roots,
-            #[cfg(feature = "tls-webpki-roots")]
-            self.with_webpki_roots,
         )
     }
 }

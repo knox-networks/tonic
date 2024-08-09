@@ -25,6 +25,11 @@ pub struct Endpoint {
     pub(crate) rate_limit: Option<(u64, Duration)>,
     #[cfg(feature = "tls")]
     pub(crate) tls: Option<TlsConnector>,
+    // Only applies if the tls config is not explicitly set. This allows users
+    // to connect to a server that doesn't support ALPN while using the
+    // tls-roots-common feature for setting up TLS.
+    #[cfg(feature = "tls-roots-common")]
+    pub(crate) tls_assume_http2: bool,
     pub(crate) buffer_size: Option<usize>,
     pub(crate) init_stream_window_size: Option<u32>,
     pub(crate) init_connection_window_size: Option<u32>,
@@ -244,11 +249,23 @@ impl Endpoint {
         Ok(Endpoint {
             tls: Some(
                 tls_config
-                    .into_tls_connector(&self.uri)
+                    .tls_connector(self.uri.clone())
                     .map_err(Error::from_source)?,
             ),
             ..self
         })
+    }
+
+    /// Configures TLS to assume that the server offers HTTP/2 even if it
+    /// doesn't perform ALPN negotiation. This only applies if a tls_config has
+    /// not been set.
+    #[cfg(feature = "tls-roots-common")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tls-roots-common")))]
+    pub fn tls_assume_http2(self, assume_http2: bool) -> Self {
+        Endpoint {
+            tls_assume_http2: assume_http2,
+            ..self
+        }
     }
 
     /// Set the value of `TCP_NODELAY` option for accepted connections. Enabled by default.
@@ -311,11 +328,16 @@ impl Endpoint {
     }
 
     pub(crate) fn connector<C>(&self, c: C) -> service::Connector<C> {
-        service::Connector::new(
-            c,
-            #[cfg(feature = "tls")]
-            self.tls.clone(),
-        )
+        #[cfg(all(feature = "tls", not(feature = "tls-roots-common")))]
+        let connector = service::Connector::new(c, self.tls.clone());
+
+        #[cfg(all(feature = "tls", feature = "tls-roots-common"))]
+        let connector = service::Connector::new(c, self.tls.clone(), self.tls_assume_http2);
+
+        #[cfg(not(feature = "tls"))]
+        let connector = service::Connector::new(c);
+
+        connector
     }
 
     /// Create a channel from this config.
@@ -421,6 +443,8 @@ impl From<Uri> for Endpoint {
             timeout: None,
             #[cfg(feature = "tls")]
             tls: None,
+            #[cfg(feature = "tls-roots-common")]
+            tls_assume_http2: false,
             buffer_size: None,
             init_stream_window_size: None,
             init_connection_window_size: None,
