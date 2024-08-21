@@ -9,7 +9,7 @@ mod tls;
 mod unix;
 
 use tokio_stream::StreamExt as _;
-use tracing::{debug, trace};
+use tracing::{debug, instrument, trace, Instrument};
 
 use crate::service::Routes;
 
@@ -623,6 +623,7 @@ impl<L> Server<L> {
 
 // This is moved to its own function as a way to get around
 // https://github.com/rust-lang/rust/issues/102211
+#[instrument(skip_all)]
 fn serve_connection<B, IO, S, E>(
     hyper_io: IO,
     hyper_svc: S,
@@ -638,32 +639,35 @@ fn serve_connection<B, IO, S, E>(
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     E: HttpServerConnExec<S::Future, B> + Send + Sync + 'static,
 {
-    tokio::spawn(async move {
-        {
-            let mut sig = pin!(Fuse {
-                inner: watcher.as_mut().map(|w| w.changed()),
-            });
+    tokio::spawn(
+        async move {
+            {
+                let mut sig = pin!(Fuse {
+                    inner: watcher.as_mut().map(|w| w.changed()),
+                });
 
-            let mut conn = pin!(builder.serve_connection(hyper_io, hyper_svc));
+                let mut conn = pin!(builder.serve_connection(hyper_io, hyper_svc));
 
-            loop {
-                tokio::select! {
-                    rv = &mut conn => {
-                        if let Err(err) = rv {
-                            debug!("failed serving connection: {:#?}", err);
+                loop {
+                    tokio::select! {
+                        rv = &mut conn => {
+                            if let Err(err) = rv {
+                                debug!("failed serving connection: {:#?}", err);
+                            }
+                            break;
+                        },
+                        _ = &mut sig => {
+                            conn.as_mut().graceful_shutdown();
                         }
-                        break;
-                    },
-                    _ = &mut sig => {
-                        conn.as_mut().graceful_shutdown();
                     }
                 }
             }
-        }
 
-        drop(watcher);
-        trace!("connection closed");
-    });
+            drop(watcher);
+            trace!("connection closed");
+        }
+        .in_current_span(),
+    );
 }
 
 impl<L> Router<L> {
