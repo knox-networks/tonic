@@ -578,7 +578,7 @@ impl<L> Server<L> {
                     let io = match io {
                         Some(Ok(io)) => io,
                         Some(Err(e)) => {
-                            trace!("error accepting connection: {:#}", e);
+                            trace!("error accepting connection: {:#?}", e);
                             continue;
                         },
                         None => {
@@ -650,7 +650,7 @@ fn serve_connection<B, IO, S, E>(
                 tokio::select! {
                     rv = &mut conn => {
                         if let Err(err) = rv {
-                            debug!("failed serving connection: {:#}", err);
+                            debug!("failed serving connection: {:#?}", err);
                         }
                         break;
                     },
