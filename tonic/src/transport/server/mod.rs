@@ -623,7 +623,7 @@ impl<L> Server<L> {
 
 // This is moved to its own function as a way to get around
 // https://github.com/rust-lang/rust/issues/102211
-#[instrument(skip_all, fields(svc = std::any::type_name::<S>()))]
+#[instrument(skip_all)]
 fn serve_connection<B, IO, S, E>(
     hyper_io: IO,
     hyper_svc: S,
@@ -652,7 +652,8 @@ fn serve_connection<B, IO, S, E>(
                     tokio::select! {
                         rv = &mut conn => {
                             if let Err(err) = rv {
-                                debug!(svc = "failed serving connection: {:#?}", err);
+                                let detail = format!("failed serving connection: {:#?}", err);
+                                debug!(detail, err);
                             }
                             break;
                         },
